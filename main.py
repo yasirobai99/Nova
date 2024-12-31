@@ -89,31 +89,61 @@ def processCommand(c):
 
 if __name__ == "__main__":
     speak("Initializing Jarvis....")
-    while True:
-        # Listen for the wake word "Jarvis"
-        # obtain audio from the microphone
-        r = sr.Recognizer()
+    # while True:
+    #     # Listen for the wake word "Jarvis"
+    #     # obtain audio from the microphone
+    #     r = sr.Recognizer()
          
-        print("recognizing...")
+    #     print("recognizing...")
+    #     try:
+    #         with sr.Microphone() as source:
+    #             print("Listening...")
+    #             audio = r.listen(source, timeout=2, phrase_time_limit=1)
+    #         word = r.recognize_google(audio)
+    #         if(word.lower() == "ok"):
+    #             speak("Ya")
+    #             # Listen for command
+    #             with sr.Microphone() as source:
+    #                 print("Jarvis Active...")
+    #                 audio = r.listen(source)
+    #                 command = r.recognize_google(audio)
+
+    #                 processCommand(command)
+
+
+    #     except Exception as e:
+    #         print("Error; {0}".format(e))
+
+
+while True:
         try:
-            with sr.Microphone() as source:
-                print("Listening...")
-                audio = r.listen(source, timeout=2, phrase_time_limit=1)
-            word = r.recognize_google(audio)
-            if(word.lower() == "ok"):
-                speak("Ya")
-                # Listen for command
-                with sr.Microphone() as source:
-                    print("Jarvis Active...")
-                    audio = r.listen(source)
-                    command = r.recognize_google(audio)
-
-                    processCommand(command)
-
-
+            with sr.Microphone(device_index=mic_index) as source:
+                recognizer.adjust_for_ambient_noise(source, duration=1)
+                print("Listening for wake word...")
+                audio = recognizer.listen(source, timeout=10, phrase_time_limit=5)
+                
+                try:
+                    word = recognizer.recognize_google(audio)
+                    print(f"Recognized wake word: {word}")
+                    if "Hello" in word.lower():
+                        speak("Yes?")
+                        with sr.Microphone(device_index=mic_index) as command_source:
+                            print("Listening for command...")
+                            audio = recognizer.listen(command_source)
+                            try:
+                                command = recognizer.recognize_google(audio)
+                                print(f"Recognized command: {command}")
+                                processCommand(command)
+                            except sr.UnknownValueError:
+                                print("Sorry, I didn't catch the command.")
+                            except sr.RequestError as e:
+                                print(f"Google Speech Recognition error: {e}")
+                except sr.UnknownValueError:
+                    print("Sorry, I didn't catch the wake word.")
+                except sr.RequestError as e:
+                    print(f"Google Speech Recognition error: {e}")
         except Exception as e:
-            print("Error; {0}".format(e))
-
+            print(f"Error: {e}")
 
 
             
