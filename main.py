@@ -3,53 +3,41 @@ import webbrowser
 import pyttsx3
 import musicLibrary
 import requests
-from openai import OpenAI
+import os
 from gtts import gTTS
 import pygame
-import os
-
-# pip install pocketsphinx
 
 recognizer = sr.Recognizer()
-engine = pyttsx3.init() 
-newsapi = os.getenv("NEWS_API_KEY")
-
-def speak_old(text):
-    engine.say(text)
-    engine.runAndWait()
+engine = pyttsx3.init()
+newsapi = os.getenv("NEWS_API_KEY")  # Loaded from environment
 
 def speak(text):
-    tts = gTTS(text)
-    tts.save('temp.mp3') 
-
-    # Initialize Pygame mixer
-    pygame.mixer.init()
-
-    # Load the MP3 file
-    pygame.mixer.music.load('temp.mp3')
-
-    # Play the MP3 file
-    pygame.mixer.music.play()
-
-    # Keep the program running until the music stops playing
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
-    
-    pygame.mixer.music.unload()
-    os.remove("temp.mp3") 
+    try:
+        tts = gTTS(text)
+        tts.save('temp.mp3')
+        pygame.mixer.init()
+        pygame.mixer.music.load('temp.mp3')
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(15)
+    finally:
+        pygame.mixer.quit()
+        os.remove("temp.mp3")
 
 def aiProcess(command):
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) 
-
-    completion = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": "You are a virtual assistant named jarvis skilled in general tasks like Alexa and Google Cloud. Give short responses please"},
-        {"role": "user", "content": command}
-    ]
-    )
-
-    return completion.choices[0].message.content
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Used environment
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a virtual assistant named Nova."},
+                {"role": "user", "content": command}
+            ]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"Error with AI processing: {str(e)}"
 
 def processCommand(c):
     if "open google" in c.lower():
@@ -62,88 +50,66 @@ def processCommand(c):
         webbrowser.open("https://linkedin.com")
     elif c.lower().startswith("play"):
         song = c.lower().split(" ")[1]
-        link = musicLibrary.music[song]
-        webbrowser.open(link)
-
+        link = musicLibrary.music.get(song)
+        if link:
+            webbrowser.open(link)
+        else:
+            speak(f"Song '{song}' not found in library.")
     elif "news" in c.lower():
-        r = requests.get(f"https://newsapi.org/v2/top-headlines?country=in&apiKey={newsapi}")
-        if r.status_code == 200:
-            # Parse the JSON response
-            data = r.json()
-            
-            # Extract the articles
-            articles = data.get('articles', [])
-            
-            # Print the headlines
-            for article in articles:
-                speak(article['title'])
-
+        try:
+            r = requests.get(f"https://newsapi.org/v2/top-headlines?country=in&apiKey={newsapi}")
+            if r.status_code == 200:
+                data = r.json()
+                articles = data.get('articles', [])
+                for article in articles[:5]:  # Limit to 5 articles
+                    speak(article['title'])
+            else:
+                speak("Failed to fetch news.")
+        except Exception as e:
+            speak(f"Error fetching news: {str(e)}")
     else:
-        # Let OpenAI handle the request
         output = aiProcess(c)
-        speak(output) 
-
-
-
-
+        speak(output)
 
 if __name__ == "__main__":
-    speak("Initializing Jarvis....")
-    # while True:
-    #     # Listen for the wake word "Jarvis"
-    #     # obtain audio from the microphone
-    #     r = sr.Recognizer()
-         
-    #     print("recognizing...")
-    #     try:
-    #         with sr.Microphone() as source:
-    #             print("Listening...")
-    #             audio = r.listen(source, timeout=2, phrase_time_limit=1)
-    #         word = r.recognize_google(audio)
-    #         if(word.lower() == "ok"):
-    #             speak("Ya")
-    #             # Listen for command
-    #             with sr.Microphone() as source:
-    #                 print("Jarvis Active...")
-    #                 audio = r.listen(source)
-    #                 command = r.recognize_google(audio)
+    mic_index = 1  
+    print("Available microphones:", sr.Microphone.list_microphone_names())
+    recognizer = sr.Recognizer()
 
-    #                 processCommand(command)
-
-
-    #     except Exception as e:
-    #         print("Error; {0}".format(e))
-
-
-while True:
+    speak("Initializing Nova...")
+    while True:
         try:
             with sr.Microphone(device_index=mic_index) as source:
+                # Listen for wake word
                 recognizer.adjust_for_ambient_noise(source, duration=1)
                 print("Listening for wake word...")
-                audio = recognizer.listen(source, timeout=10, phrase_time_limit=5)
-                
                 try:
+                    audio = recognizer.listen(source, timeout=15, phrase_time_limit=10)
                     word = recognizer.recognize_google(audio)
                     print(f"Recognized wake word: {word}")
-                    if "Hello" in word.lower():
-                        speak("Yes?")
-                        with sr.Microphone(device_index=mic_index) as command_source:
-                            print("Listening for command...")
-                            audio = recognizer.listen(command_source)
-                            try:
-                                command = recognizer.recognize_google(audio)
-                                print(f"Recognized command: {command}")
-                                processCommand(command)
-                            except sr.UnknownValueError:
-                                print("Sorry, I didn't catch the command.")
-                            except sr.RequestError as e:
-                                print(f"Google Speech Recognition error: {e}")
+                    if "hello" in word.lower():  
+                        speak("Yes, how can I help?")
+                        
+                        # Listen for the actual command
+                        print("Listening for command...")
+                        recognizer.adjust_for_ambient_noise(source, duration=1)
+                        audio = recognizer.listen(source, timeout=15, phrase_time_limit=15)
+                        try:
+                            command = recognizer.recognize_google(audio)
+                            print(f"Recognized command: {command}")
+                            processCommand(command)  # Handle the command
+                        except sr.UnknownValueError:
+                            print("Sorry, I didn't catch the command.")
+                            speak("Sorry, I didn't catch that. Please repeat.")
+                        except sr.RequestError as e:
+                            print(f"Google Speech Recognition error: {e}")
+                            speak("There was an error with speech recognition.")
                 except sr.UnknownValueError:
                     print("Sorry, I didn't catch the wake word.")
                 except sr.RequestError as e:
                     print(f"Google Speech Recognition error: {e}")
+        except KeyboardInterrupt:
+            print("Exiting program...")
+            break
         except Exception as e:
-            print(f"Error: {e}")
-
-
-            
+            print(f"Unexpected error: {e}")
